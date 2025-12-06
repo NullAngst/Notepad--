@@ -1,0 +1,57 @@
+// resource.rc
+#include <windows.h>
+#include "resource.h"
+
+// -----------------------------------------------------------------------------
+// Icon (Uncomment the line below if you have a file named 'notepad.ico')
+// IDI_ICON ICON "notepad.ico"
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// Menu
+// -----------------------------------------------------------------------------
+IDR_MAINMENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New\tCtrl+N",           ID_FILE_NEW
+        MENUITEM "&Open...\tCtrl+O",       ID_FILE_OPEN
+        MENUITEM "&Save\tCtrl+S",          ID_FILE_SAVE
+        MENUITEM "Save &As...",            ID_FILE_SAVEAS
+        MENUITEM SEPARATOR
+        MENUITEM "Page Set&up...",         ID_FILE_PAGESETUP
+        MENUITEM "&Print...\tCtrl+P",      ID_FILE_PRINT
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                  ID_FILE_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Undo\tCtrl+Z",          ID_EDIT_UNDO
+        MENUITEM SEPARATOR
+        MENUITEM "Cu&t\tCtrl+X",           ID_EDIT_CUT
+        MENUITEM "&Copy\tCtrl+C",          ID_EDIT_COPY
+        MENUITEM "&Paste\tCtrl+V",         ID_EDIT_PASTE
+        MENUITEM "De&lete\tDel",           ID_EDIT_DELETE
+        MENUITEM SEPARATOR
+        MENUITEM "&Find...\tCtrl+F",       ID_EDIT_FIND
+        MENUITEM "Find &Next\tF3",         ID_EDIT_FINDNEXT
+        MENUITEM "&Replace...\tCtrl+H",    ID_EDIT_REPLACE
+        MENUITEM "&Go To...\tCtrl+G",      ID_EDIT_GOTO
+        MENUITEM SEPARATOR
+        MENUITEM "Select &All\tCtrl+A",    ID_EDIT_SELECTALL
+        MENUITEM "Time/&Date\tF5",         ID_EDIT_TIMEDATE
+    END
+    POPUP "F&ormat"
+    BEGIN
+        MENUITEM "&Word Wrap",             ID_FORMAT_WORDWRAP
+        MENUITEM "&Font...",               ID_FORMAT_FONT
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Status Bar",            ID_VIEW_STATUSBAR
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About Notepad--",       ID_HELP_ABOUT
+    END
+END
