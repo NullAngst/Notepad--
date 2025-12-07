@@ -5,6 +5,9 @@
 #define IDR_MAINMENU 101
 #define IDI_ICON     102
 
+// Keyboard shortcuts
+#define IDR_ACCELERATOR 103
+
 // File Menu
 #define ID_FILE_NEW         9001
 #define ID_FILE_OPEN        9002

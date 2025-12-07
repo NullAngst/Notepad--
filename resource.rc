@@ -1,57 +1,74 @@
-// resource.rc
-#include <windows.h>
-#include "resource.h"
 
-// -----------------------------------------------------------------------------
-// Icon (Uncomment the line below if you have a file named 'notepad.ico')
-// IDI_ICON ICON "notepad.ico"
-// -----------------------------------------------------------------------------
+/* Type: menu
 
-// -----------------------------------------------------------------------------
-// Menu
-// -----------------------------------------------------------------------------
-IDR_MAINMENU MENU
+   Name: 101.  */
+LANGUAGE 9, 1
+
+101 MENU
 BEGIN
-    POPUP "&File"
-    BEGIN
-        MENUITEM "&New\tCtrl+N",           ID_FILE_NEW
-        MENUITEM "&Open...\tCtrl+O",       ID_FILE_OPEN
-        MENUITEM "&Save\tCtrl+S",          ID_FILE_SAVE
-        MENUITEM "Save &As...",            ID_FILE_SAVEAS
-        MENUITEM SEPARATOR
-        MENUITEM "Page Set&up...",         ID_FILE_PAGESETUP
-        MENUITEM "&Print...\tCtrl+P",      ID_FILE_PRINT
-        MENUITEM SEPARATOR
-        MENUITEM "E&xit",                  ID_FILE_EXIT
-    END
-    POPUP "&Edit"
-    BEGIN
-        MENUITEM "&Undo\tCtrl+Z",          ID_EDIT_UNDO
-        MENUITEM SEPARATOR
-        MENUITEM "Cu&t\tCtrl+X",           ID_EDIT_CUT
-        MENUITEM "&Copy\tCtrl+C",          ID_EDIT_COPY
-        MENUITEM "&Paste\tCtrl+V",         ID_EDIT_PASTE
-        MENUITEM "De&lete\tDel",           ID_EDIT_DELETE
-        MENUITEM SEPARATOR
-        MENUITEM "&Find...\tCtrl+F",       ID_EDIT_FIND
-        MENUITEM "Find &Next\tF3",         ID_EDIT_FINDNEXT
-        MENUITEM "&Replace...\tCtrl+H",    ID_EDIT_REPLACE
-        MENUITEM "&Go To...\tCtrl+G",      ID_EDIT_GOTO
-        MENUITEM SEPARATOR
-        MENUITEM "Select &All\tCtrl+A",    ID_EDIT_SELECTALL
-        MENUITEM "Time/&Date\tF5",         ID_EDIT_TIMEDATE
-    END
-    POPUP "F&ormat"
-    BEGIN
-        MENUITEM "&Word Wrap",             ID_FORMAT_WORDWRAP
-        MENUITEM "&Font...",               ID_FORMAT_FONT
-    END
-    POPUP "&View"
-    BEGIN
-        MENUITEM "&Status Bar",            ID_VIEW_STATUSBAR
-    END
-    POPUP "&Help"
-    BEGIN
-        MENUITEM "&About Notepad--",       ID_HELP_ABOUT
-    END
+  POPUP "&File"
+  BEGIN
+    MENUITEM "&New\tCtrl+N", 9001
+    MENUITEM "&Open...\tCtrl+O", 9002
+    MENUITEM "&Save\tCtrl+S", 9003
+    MENUITEM "Save &As...", 9004
+    MENUITEM SEPARATOR
+    MENUITEM "Page Set&up...", 9005
+    MENUITEM "&Print...\tCtrl+P", 9006
+    MENUITEM SEPARATOR
+    MENUITEM "E&xit", 9007
+  END
+  POPUP "&Edit"
+  BEGIN
+    MENUITEM "&Undo\tCtrl+Z", 9101
+    MENUITEM SEPARATOR
+    MENUITEM "Cu&t\tCtrl+X", 9102
+    MENUITEM "&Copy\tCtrl+C", 9103
+    MENUITEM "&Paste\tCtrl+V", 9104
+    MENUITEM "De&lete\tDel", 9105
+    MENUITEM SEPARATOR
+    MENUITEM "&Find...\tCtrl+F", 9106
+    MENUITEM "Find &Next\tF3", 9107
+    MENUITEM "&Replace...\tCtrl+H", 9108
+    MENUITEM "&Go To...\tCtrl+G", 9109
+    MENUITEM SEPARATOR
+    MENUITEM "Select &All\tCtrl+A", 9110
+    MENUITEM "Time/&Date\tF5", 9111
+  END
+  POPUP "F&ormat"
+  BEGIN
+    MENUITEM "&Word Wrap", 9201
+    MENUITEM "&Font...", 9202
+  END
+  POPUP "&View"
+  BEGIN
+    MENUITEM "&Status Bar", 9301
+  END
+  POPUP "&Help"
+  BEGIN
+    MENUITEM "&About Notepad--", 9401
+  END
+END
+
+/* Type: accelerators
+
+   Name: 103.  */
+
+103 ACCELERATORS
+BEGIN
+  78, 9001, VIRTKEY, CONTROL
+  79, 9002, VIRTKEY, CONTROL
+  83, 9003, VIRTKEY, CONTROL
+  80, 9006, VIRTKEY, CONTROL
+  90, 9101, VIRTKEY, CONTROL
+  88, 9102, VIRTKEY, CONTROL
+  67, 9103, VIRTKEY, CONTROL
+  86, 9104, VIRTKEY, CONTROL
+  70, 9106, VIRTKEY, CONTROL
+  72, 9108, VIRTKEY, CONTROL
+  71, 9109, VIRTKEY, CONTROL
+  65, 9110, VIRTKEY, CONTROL
+  114, 9107, VIRTKEY
+  116, 9111, VIRTKEY
+  46, 9105, VIRTKEY
 END

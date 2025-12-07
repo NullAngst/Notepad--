@@ -1,4 +1,4 @@
-// main.cpp - Notepad-- (Phase 3)
+// main.cpp - Notepad-- (Phase 4)
 #ifndef UNICODE
 #define UNICODE
 #endif 
@@ -17,6 +17,11 @@ HINSTANCE hInst;
 WCHAR szTitle[] = L"Notepad--";
 WCHAR szWindowClass[] = L"NotepadMinusMinus";
 WCHAR szFileName[MAX_PATH] = L"Untitled";
+// NEW GLOBALS FOR FIND FEATURE
+HWND hFindReplaceDlg = NULL;    // Handle to the floating Find dialog
+UINT uFindReplaceMsg = 0;       // Message identifier for Find events
+FINDREPLACE fr;                 // Structure for Find dialog parameters
+WCHAR szFindWhat[80];           // Buffer for the search string
 
 // NEW: Encoding support
 enum FileEncoding {
@@ -36,11 +41,13 @@ void OpenFileHandler(HWND hwnd);
 void SaveFileHandler(HWND hwnd, BOOL bSaveAs); // Updated prototype
 BOOL SaveFileToDisk(HWND hwnd, LPCWSTR pszFileName);
 BOOL LoadFileFromDisk(HWND hwnd, LPCWSTR pszFileName);
+void FindNextText(HWND hwnd);
 
 // 1. Entry Point
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
     hInst = hInstance;
+    uFindReplaceMsg = RegisterWindowMessage(FINDMSGSTRING);
 
     WNDCLASSEXW wcex = {0};
     wcex.cbSize = sizeof(WNDCLASSEX);
@@ -73,11 +80,25 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);
 
+    // --- NEW: Load Accelerators ---
+    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDR_ACCELERATOR));
+
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0))
     {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        // Priority 1: Find Dialog Messages
+        if (hFindReplaceDlg != NULL && IsDialogMessage(hFindReplaceDlg, &msg))
+        {
+            continue;
+        }
+
+        // Priority 2: Keyboard Shortcuts (Accelerators)
+        if (!TranslateAccelerator(hWnd, hAccelTable, &msg))
+        {
+            // Priority 3: Standard Windows Messages
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
 
     return (int) msg.wParam;
@@ -86,47 +107,73 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 // 2. Window Procedure
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    // --- NEW: Handle the Find Dialog Message ---
+    if (message == uFindReplaceMsg)
+    {
+        LPFINDREPLACE lpfr = (LPFINDREPLACE)lParam;
+        
+        // If the dialog is closing
+        if (lpfr->Flags & FR_DIALOGTERM)
+        {
+            hFindReplaceDlg = NULL;
+            return 0;
+        }
+
+        // If the user clicked "Find Next"
+        if (lpfr->Flags & FR_FINDNEXT)
+        {
+            FindNextText(hWnd);
+        }
+        return 0;
+    }
+    // -------------------------------------------
+
     switch (message)
     {
     case WM_CREATE:
-        {
-            hEdit = CreateWindowEx(
-                WS_EX_CLIENTEDGE, L"EDIT", L"", 
-                WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | 
-                ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL, 
-                0, 0, 0, 0, hWnd, (HMENU)1, hInst, NULL
-            );
-            SetDefaultFont();
-        }
+        // ... (Keep existing code)
+        hEdit = CreateWindowEx(
+            WS_EX_CLIENTEDGE, L"EDIT", L"", 
+            WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | 
+            ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL, 
+            0, 0, 0, 0, hWnd, (HMENU)1, hInst, NULL
+        );
+        SetDefaultFont();
         break;
 
-    case WM_SIZE:
-        ResizeEditControl(hWnd);
-        break;
-
-    case WM_SETFOCUS:
-        SetFocus(hEdit);
-        break;
+    // ... (Keep WM_SIZE, WM_SETFOCUS)
+    case WM_SIZE: ResizeEditControl(hWnd); break;
+    case WM_SETFOCUS: SetFocus(hEdit); break;
 
     case WM_COMMAND:
         {
             int wmId = LOWORD(wParam);
             switch (wmId)
             {
-            case ID_FILE_OPEN:
-                OpenFileHandler(hWnd);
+            // ... (Keep File I/O cases)
+            case ID_FILE_OPEN: OpenFileHandler(hWnd); break;
+            case ID_FILE_SAVE: SaveFileHandler(hWnd, FALSE); break;
+            case ID_FILE_SAVEAS: SaveFileHandler(hWnd, TRUE); break;
+            case ID_FILE_EXIT: DestroyWindow(hWnd); break;
+            
+            // --- NEW: Find Command ---
+            case ID_EDIT_FIND:
+                if (hFindReplaceDlg == NULL)
+                {
+                    ZeroMemory(&fr, sizeof(fr));
+                    fr.lStructSize = sizeof(fr);
+                    fr.hwndOwner = hWnd;
+                    fr.lpstrFindWhat = szFindWhat;
+                    fr.wFindWhatLen = 80;
+                    fr.Flags = FR_DOWN | FR_NOWHOLEWORD; 
+
+                    hFindReplaceDlg = FindText(&fr);
+                }
                 break;
-            case ID_FILE_SAVE:
-                SaveFileHandler(hWnd, FALSE); // FALSE = Regular Save
-                break;
-            case ID_FILE_SAVEAS:              // <--- ADDED THIS CASE
-                SaveFileHandler(hWnd, TRUE);  // TRUE = Force "Save As"
-                break;
-            case ID_FILE_EXIT:
-                DestroyWindow(hWnd);
-                break;
+            // -------------------------
+
             case ID_HELP_ABOUT:
-                MessageBox(hWnd, L"Notepad-- v0.2\nClassic recreation.", L"About", MB_OK);
+                MessageBox(hWnd, L"Notepad-- v0.3\nClassic recreation.", L"About", MB_OK);
                 break;
             case ID_EDIT_SELECTALL:
                 SendMessage(hEdit, EM_SETSEL, 0, -1);
@@ -229,6 +276,62 @@ void SaveFileHandler(HWND hwnd, BOOL bSaveAs)
     {
         std::wstring title = std::wstring(szFileName) + L" - Notepad--";
         SetWindowText(hwnd, title.c_str());
+    }
+}
+
+void FindNextText(HWND hwnd)
+{
+    // 1. Get the current text and selection
+    DWORD dwLen = GetWindowTextLength(hEdit);
+    WCHAR* pRawText = new WCHAR[dwLen + 1];
+    GetWindowText(hEdit, pRawText, dwLen + 1);
+    
+    std::wstring text(pRawText);
+    std::wstring search(szFindWhat);
+    delete[] pRawText;
+
+    DWORD dwStart, dwEnd;
+    SendMessage(hEdit, EM_GETSEL, (WPARAM)&dwStart, (LPARAM)&dwEnd);
+
+    // 2. Check Direction
+    // The Find Dialog sets the FR_DOWN flag if "Down" is checked.
+    bool bSearchDown = (fr.Flags & FR_DOWN) != 0;
+    bool bMatchCase  = (fr.Flags & FR_MATCHCASE) != 0;
+
+    // 3. Handle Case Sensitivity (Primitive method: lowercase both if unchecked)
+    if (!bMatchCase) {
+        for (auto &c : text) c = towlower(c);
+        for (auto &c : search) c = towlower(c);
+    }
+
+    size_t foundPos = std::string::npos;
+
+    if (bSearchDown)
+    {
+        // Search Forward from the END of the current selection
+        foundPos = text.find(search, dwEnd);
+    }
+    else
+    {
+        // Search Backward (Up) from the START of the current selection
+        // We look for the LAST occurrence that happens before dwStart
+        if (dwStart > 0)
+            foundPos = text.rfind(search, dwStart - 1);
+    }
+
+    // 4. Handle Result
+    if (foundPos != std::string::npos)
+    {
+        int nStart = (int)foundPos;
+        
+        // Fix: Removed the erroneous 'nEnd' line. 
+        // We calculate the end position directly in the Select command below.
+        SendMessage(hEdit, EM_SETSEL, nStart, nStart + wcslen(szFindWhat));
+        SendMessage(hEdit, EM_SCROLLCARET, 0, 0);
+    }
+    else
+    {
+        MessageBox(hwnd, L"Cannot find text.", L"Notepad--", MB_ICONINFORMATION);
     }
 }
 
