@@ -13,7 +13,7 @@ BEGIN
     MENUITEM "&Save\tCtrl+S", 9003
     MENUITEM "Save &As...", 9004
     MENUITEM SEPARATOR
-    MENUITEM "Page Set&up...", 9005
+    //MENUITEM "Page Set&up...", 9005
     MENUITEM "&Print...\tCtrl+P", 9006
     MENUITEM SEPARATOR
     MENUITEM "E&xit", 9007
