@@ -268,41 +268,51 @@ if ($pd.ShowDialog() -eq 'OK') {{
     # SUPPRESS the 'Printing...' status dialog to prevent freezing/hanging
     $printDoc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
     
-    # 3. Read Content
+    # 3. Read Content (All Text)
     if (Test-Path $filePath) {{
-        $lines = Get-Content $filePath
+        $text = [System.IO.File]::ReadAllText($filePath, [System.Text.Encoding]::UTF8)
     }} else {{
-        $lines = @("Error: Could not read content.")
+        $text = "Error: Could not read content."
     }}
     
     # Setup Font (Consolas 11 to match editor)
     $font = New-Object System.Drawing.Font("Consolas", 11)
     $brush = [System.Drawing.Brushes]::Black
+    $format = [System.Drawing.StringFormat]::GenericDefault
     
-    # Track current line index across pages (script scope)
-    $script:lineIdx = 0
+    # Track char index
+    $script:currChar = 0
     
     # 4. Define Print Page Event
     $printDoc.add_PrintPage({{
         param($sender, $e)
         
-        $y = $e.MarginBounds.Top
-        $left = $e.MarginBounds.Left
-        $lineHeight = $font.GetHeight($e.Graphics)
+        # Define printable area
+        $printArea = New-Object System.Drawing.RectangleF(
+            $e.MarginBounds.Left, 
+            $e.MarginBounds.Top, 
+            $e.MarginBounds.Width, 
+            $e.MarginBounds.Height
+        )
         
-        # Print lines until page is full
-        while ($y + $lineHeight -lt $e.MarginBounds.Bottom -and $script:lineIdx -lt $lines.Count) {{
-            $line = $lines[$script:lineIdx]
-            
-            # DrawString handles the text rendering
-            $e.Graphics.DrawString($line, $font, $brush, $left, $y)
-            
-            $y += $lineHeight
-            $script:lineIdx++
-        }}
+        # Variables for MeasureString
+        $charsFitted = 0
+        $linesFilled = 0
         
-        # Check if more pages are needed
-        if ($script:lineIdx -lt $lines.Count) {{
+        # Measure how much text fits in the area (Handles Wrapping)
+        $textToPrint = $text.Substring($script:currChar)
+        
+        # MeasureString calculates strict character fit within the rectangle
+        $e.Graphics.MeasureString($textToPrint, $font, $printArea.Size, $format, [ref]$charsFitted, [ref]$linesFilled)
+        
+        # Draw the text that fits (DrawString automatically wraps inside the rectangle)
+        $e.Graphics.DrawString($textToPrint, $font, $brush, $printArea, $format)
+        
+        # Advance position by the number of characters that fit
+        $script:currChar += $charsFitted
+        
+        # Check if we need another page
+        if ($script:currChar -lt $text.Length) {{
             $e.HasMorePages = $true
         }} else {{
             $e.HasMorePages = $false
@@ -553,7 +563,7 @@ if ($pd.ShowDialog() -eq 'OK') {{
 
     # --- Help ---
     def show_about(self):
-        messagebox.showinfo("About Notepad--", "Notepad-- v1.3.2\n\nUpdates:\n- Fixed PDF printing freeze (Threading)\n- Suppressed default print popup")
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.4\n\nUpdates:\n- Fixed Printing Word Wrap (Lines no longer cut off)")
 
 if __name__ == "__main__":
     root = tk.Tk()
