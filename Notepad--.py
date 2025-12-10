@@ -563,7 +563,7 @@ if ($pd.ShowDialog() -eq 'OK') {{
 
     # --- Help ---
     def show_about(self):
-        messagebox.showinfo("About Notepad--", "Notepad-- v1.4\n\nUpdates:\n- Fixed Printing Word Wrap (Lines no longer cut off)")
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.4\nA recreation of the classic Notepad in Python.")
 
 if __name__ == "__main__":
     root = tk.Tk()
