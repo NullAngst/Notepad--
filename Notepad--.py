@@ -22,7 +22,7 @@ class NotepadMinusMinus:
         self.current_font_size = 11
         
         # --- UI Setup ---
-        # FIX #2: inactiveselectbackground ensures highlight stays visible 
+        # inactiveselectbackground ensures highlight stays visible 
         # when focus moves to the Find/Replace dialogs.
         self.text_area = tk.Text(self.root, undo=True, wrap=tk.NONE,
                                  selectbackground="#0078D7", 
@@ -160,7 +160,7 @@ class NotepadMinusMinus:
             self.save_file()
 
     def print_file(self):
-        # FIX #3: Use 'notepad.exe /p' for reliable Windows printing
+        # Use 'notepad.exe /p' for reliable Windows printing
         temp_file = os.path.abspath("temp_print.txt")
         try:
             with open(temp_file, "w", encoding="utf-8") as f:
@@ -227,8 +227,6 @@ class NotepadMinusMinus:
                     self.text_area.tag_add("sel", pos, end_pos)
                     self.text_area.mark_set(tk.INSERT, end_pos)
                     self.text_area.see(pos)
-                    # Because we set inactiveselectbackground, we don't need to force focus back
-                    # to make the highlight visible. We keep focus on the Entry for better UX.
                 else:
                     messagebox.showinfo("Notepad--", f"Cannot find \"{target}\"")
 
@@ -293,7 +291,7 @@ class NotepadMinusMinus:
         tk.Button(self.replace_window, text="Replace", command=replace_one).grid(row=1, column=2, padx=4, pady=2)
         tk.Button(self.replace_window, text="Replace All", command=replace_all).grid(row=2, column=2, padx=4, pady=2)
 
-    # --- Format (FIX #1: Font Family AND Size) ---
+    # --- Format ---
 
     def toggle_word_wrap(self):
         self.word_wrap = not self.word_wrap
@@ -323,7 +321,7 @@ class NotepadMinusMinus:
         # Family List
         families = list(font.families())
         families.sort()
-        list_family = tk.Listbox(frame_family, exportselection=False) # exportselection=False keeps highlights on both lists
+        list_family = tk.Listbox(frame_family, exportselection=False)
         list_family.pack(fill=tk.BOTH, expand=True)
         scrollbar_fam = tk.Scrollbar(list_family)
         scrollbar_fam.pack(side=tk.RIGHT, fill=tk.Y)
@@ -372,6 +370,10 @@ class NotepadMinusMinus:
 
         tk.Button(font_window, text="OK", command=on_ok, width=10).pack(side=tk.BOTTOM, pady=5)
         tk.Button(font_window, text="Cancel", command=font_window.destroy, width=10).pack(side=tk.BOTTOM, pady=5)
+
+    # --- Help ---
+    def show_about(self):
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.0\nA lightweight text editor.\n\nWritten in Python/Tkinter.")
 
 if __name__ == "__main__":
     root = tk.Tk()
