@@ -1,6 +1,8 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, font
+from tkinter import filedialog, messagebox, font, simpledialog
 import os
+import sys
+import codecs
 from datetime import datetime
 
 class NotepadMinusMinus:
@@ -17,32 +19,29 @@ class NotepadMinusMinus:
         self.current_font_size = 11
         
         # --- UI Setup ---
-        # The main text area. Undo=True enables Ctrl+Z/Ctrl+Y natively
         self.text_area = tk.Text(self.root, undo=True, wrap=tk.NONE)
         self.text_area.pack(fill=tk.BOTH, expand=1)
         
-        # Scrollbars (Classic Notepad has them)
         self.scrollbar_y = tk.Scrollbar(self.text_area)
         self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        self.text_area.config(yscrollcommand=self.scrollbar_y.set)
+        self.scrollbar_x = tk.Scrollbar(self.text_area, orient=tk.HORIZONTAL)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        self.text_area.config(yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_y.config(command=self.text_area.yview)
+        self.scrollbar_x.config(command=self.text_area.xview)
 
-        # Set Default Font
         self.update_font()
 
         # --- Menus ---
         self.menu_bar = tk.Menu(self.root)
         self.root.config(menu=self.menu_bar)
         self.create_menus()
-        
-        # --- Key Bindings ---
         self.bind_shortcuts()
-        
-        # Handle "X" button
         self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
 
     def create_menus(self):
-        # File Menu
+        # File
         file_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New", accelerator="Ctrl+N", command=self.new_file)
@@ -50,9 +49,11 @@ class NotepadMinusMinus:
         file_menu.add_command(label="Save", accelerator="Ctrl+S", command=self.save_file)
         file_menu.add_command(label="Save As...", command=self.save_file_as)
         file_menu.add_separator()
+        file_menu.add_command(label="Print", accelerator="Ctrl+P", command=self.print_file)
+        file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_exit)
 
-        # Edit Menu
+        # Edit
         edit_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Edit", menu=edit_menu)
         edit_menu.add_command(label="Undo", accelerator="Ctrl+Z", command=self.text_area.edit_undo)
@@ -69,13 +70,13 @@ class NotepadMinusMinus:
         edit_menu.add_command(label="Select All", accelerator="Ctrl+A", command=self.select_all)
         edit_menu.add_command(label="Time/Date", accelerator="F5", command=self.insert_time_date)
 
-        # Format Menu
+        # Format
         format_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Format", menu=format_menu)
         format_menu.add_checkbutton(label="Word Wrap", command=self.toggle_word_wrap)
-        format_menu.add_command(label="Font...", command=self.change_font)
+        format_menu.add_command(label="Font...", command=self.open_font_dialog)
 
-        # Help Menu
+        # Help
         help_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About Notepad--", command=self.show_about)
@@ -84,11 +85,12 @@ class NotepadMinusMinus:
         self.root.bind("<Control-n>", lambda e: self.new_file())
         self.root.bind("<Control-o>", lambda e: self.open_file())
         self.root.bind("<Control-s>", lambda e: self.save_file())
+        self.root.bind("<Control-p>", lambda e: self.print_file())
         self.root.bind("<Control-f>", lambda e: self.open_find_dialog())
         self.root.bind("<Control-h>", lambda e: self.open_replace_dialog())
         self.root.bind("<F5>", lambda e: self.insert_time_date())
 
-    # --- Logic ---
+    # --- File Operations ---
 
     def new_file(self):
         self.text_area.delete(1.0, tk.END)
@@ -99,29 +101,47 @@ class NotepadMinusMinus:
     def open_file(self):
         path = filedialog.askopenfilename(defaultextension=".txt", 
                                           filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
-        if path:
-            self.file_path = path
-            self.filename = os.path.basename(path)
-            self.root.title(f"{self.filename} - Notepad--")
-            self.text_area.delete(1.0, tk.END)
-            try:
-                # Python handles standard text encodings automatically
-                with open(path, "r", encoding="utf-8") as f:
-                    self.text_area.insert(1.0, f.read())
-            except UnicodeDecodeError:
-                # Fallback for ANSI/Legacy files
-                with open(path, "r", encoding="latin-1") as f:
-                    self.text_area.insert(1.0, f.read())
+        if not path: return
+        
+        self.file_path = path
+        self.filename = os.path.basename(path)
+        self.root.title(f"{self.filename} - Notepad--")
+        self.text_area.delete(1.0, tk.END)
+        
+        # IMPROVED LOADING: Try UTF-8, then UTF-16, then fallback
+        content = ""
+        try:
+            # First, check for BOMs manually to be sure
+            with open(path, 'rb') as f:
+                raw = f.read()
+            
+            if raw.startswith(codecs.BOM_UTF16_LE):
+                content = raw.decode('utf-16-le')
+            elif raw.startswith(codecs.BOM_UTF16_BE):
+                content = raw.decode('utf-16-be')
+            elif raw.startswith(codecs.BOM_UTF8):
+                content = raw.decode('utf-8-sig')
+            else:
+                # No BOM, try UTF-8, if fail, try Latin-1
+                try:
+                    content = raw.decode('utf-8')
+                except UnicodeDecodeError:
+                    content = raw.decode('latin-1')
+                    
+            self.text_area.insert(1.0, content)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not read file: {e}")
 
     def save_file(self):
         if self.file_path is None:
             self.save_file_as()
         else:
             try:
-                content = self.text_area.get(1.0, tk.END)
-                # We strip the very last newline that Tkinter adds automatically
+                content = self.text_area.get(1.0, tk.END).rstrip()
+                # Default to UTF-8 for saving
                 with open(self.file_path, "w", encoding="utf-8") as f:
-                    f.write(content.rstrip())
+                    f.write(content)
                 self.root.title(f"{self.filename} - Notepad--")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
@@ -135,34 +155,48 @@ class NotepadMinusMinus:
             self.filename = os.path.basename(path)
             self.save_file()
 
+    def print_file(self):
+        # Generate a temporary file to print
+        temp_file = "temp_print.txt"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            f.write(self.text_area.get(1.0, tk.END))
+            
+        try:
+            if sys.platform == "win32":
+                # Windows: Use os.startfile with 'print' verb
+                os.startfile(temp_file, "print")
+            else:
+                # Linux/macOS: Use 'lp' (CUPS)
+                os.system(f"lp {temp_file}")
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Could not print: {e}")
+
     def on_exit(self):
-        # In a full app, you'd check for unsaved changes here
         self.root.destroy()
 
-    # --- Edit Functions ---
-
+    # --- Editing ---
     def delete_selection(self):
-        try:
-            self.text_area.delete("sel.first", "sel.last")
-        except tk.TclError:
-            pass # No selection
+        try: self.text_area.delete("sel.first", "sel.last")
+        except tk.TclError: pass
 
     def select_all(self):
         self.text_area.tag_add("sel", "1.0", "end")
-        return "break" # prevent default behavior
+        return "break"
 
     def insert_time_date(self):
-        now = datetime.now()
-        # Format: 10:23 PM 12/09/2025 (Mimicking the C++ code)
-        dt_string = now.strftime("%I:%M %p %m/%d/%Y")
-        self.text_area.insert(tk.INSERT, dt_string)
+        now = datetime.now().strftime("%I:%M %p %m/%d/%Y")
+        self.text_area.insert(tk.INSERT, now)
 
-    # --- Find & Replace (Mimicking Win32 Dialogs) ---
+    # --- Find & Replace (Fixed Highlighting) ---
 
     def open_find_dialog(self):
+        if hasattr(self, 'find_window') and self.find_window.winfo_exists():
+            self.find_window.lift()
+            return
+            
         self.find_window = tk.Toplevel(self.root)
         self.find_window.title("Find")
-        self.find_window.geometry("300x80")
+        self.find_window.geometry("320x80")
         self.find_window.resizable(False, False)
 
         tk.Label(self.find_window, text="Find what:").grid(row=0, column=0, padx=4, pady=4)
@@ -174,29 +208,36 @@ class NotepadMinusMinus:
             target = entry_find.get()
             if target:
                 start_pos = self.text_area.index(tk.INSERT)
-                # Search returns "line.col" or empty string
                 pos = self.text_area.search(target, start_pos, stopindex=tk.END)
-                
-                # If not found from cursor, wrap to top (Standard notepad behavior usually asks, but we simplify)
                 if not pos: 
                     pos = self.text_area.search(target, "1.0", stopindex=tk.END)
 
                 if pos:
-                    # Calculate end position for selection
                     end_pos = f"{pos}+{len(target)}c"
                     self.text_area.tag_remove("sel", "1.0", "end")
                     self.text_area.tag_add("sel", pos, end_pos)
                     self.text_area.mark_set(tk.INSERT, end_pos)
                     self.text_area.see(pos)
+                    
+                    # FIX: Force focus back to main text area so highlighting shows
+                    # Then force focus back to entry so you can hit Enter again
+                    self.text_area.focus_set()
+                    self.find_window.after(50, lambda: entry_find.focus_set())
                 else:
                     messagebox.showinfo("Notepad--", f"Cannot find \"{target}\"")
 
+        # Bind Enter key to 'Find Next'
+        entry_find.bind('<Return>', lambda e: find_next())
         tk.Button(self.find_window, text="Find Next", command=find_next).grid(row=0, column=2, padx=4, pady=4)
 
     def open_replace_dialog(self):
+        if hasattr(self, 'replace_window') and self.replace_window.winfo_exists():
+            self.replace_window.lift()
+            return
+
         self.replace_window = tk.Toplevel(self.root)
         self.replace_window.title("Replace")
-        self.replace_window.geometry("350x120")
+        self.replace_window.geometry("380x120")
         self.replace_window.resizable(False, False)
 
         tk.Label(self.replace_window, text="Find what:").grid(row=0, column=0, sticky="e")
@@ -210,19 +251,16 @@ class NotepadMinusMinus:
         def replace_one():
             target = entry_find.get()
             replacement = entry_replace.get()
-            
-            # Check if current selection matches target
             try:
+                # Check if current selection matches target
                 sel_start = self.text_area.index("sel.first")
                 sel_end = self.text_area.index("sel.last")
-                current_sel = self.text_area.get(sel_start, sel_end)
-                if current_sel == target:
+                if self.text_area.get(sel_start, sel_end) == target:
                     self.text_area.delete(sel_start, sel_end)
                     self.text_area.insert(sel_start, replacement)
-            except tk.TclError:
-                pass
+            except tk.TclError: pass
             
-            # Find next
+            # Find next occurrence
             start_pos = self.text_area.index(tk.INSERT)
             pos = self.text_area.search(target, start_pos, stopindex=tk.END)
             if pos:
@@ -231,58 +269,69 @@ class NotepadMinusMinus:
                 self.text_area.tag_add("sel", pos, end_pos)
                 self.text_area.mark_set(tk.INSERT, end_pos)
                 self.text_area.see(pos)
+                self.text_area.focus_set()
+                self.replace_window.after(50, lambda: entry_replace.focus_set())
 
         def replace_all():
             target = entry_find.get()
             replacement = entry_replace.get()
             if not target: return
-            
-            # Simple Replace All logic
             count = 0
-            # Start from top
             current_pos = "1.0"
             while True:
                 pos = self.text_area.search(target, current_pos, stopindex=tk.END)
                 if not pos: break
-                
                 end_pos = f"{pos}+{len(target)}c"
                 self.text_area.delete(pos, end_pos)
                 self.text_area.insert(pos, replacement)
-                
-                # Move pointer past the replacement
                 current_pos = f"{pos}+{len(replacement)}c"
                 count += 1
-            
             messagebox.showinfo("Notepad--", f"Replaced {count} occurrences.")
 
         tk.Button(self.replace_window, text="Find Next", command=replace_one).grid(row=0, column=2, padx=4, pady=2)
         tk.Button(self.replace_window, text="Replace", command=replace_one).grid(row=1, column=2, padx=4, pady=2)
         tk.Button(self.replace_window, text="Replace All", command=replace_all).grid(row=2, column=2, padx=4, pady=2)
 
-    # --- Format Functions ---
+    # --- Format (Improved Font Selector) ---
 
     def toggle_word_wrap(self):
         self.word_wrap = not self.word_wrap
-        # Tkinter makes this easy: just change the wrap mode
         self.text_area.config(wrap=tk.WORD if self.word_wrap else tk.NONE)
 
     def update_font(self):
         new_font = font.Font(family=self.current_font_family, size=self.current_font_size)
         self.text_area.configure(font=new_font)
 
-    def change_font(self):
-        # Tkinter doesn't have a native "Font Chooser" dialog like Win32.
-        # We'll use a simple input for now to keep dependencies low.
-        res = messagebox.askyesno("Font", "Toggle Font Size?\n\nYes = Bigger (14)\nNo = Default (11)")
-        self.current_font_size = 14 if res else 11
-        self.update_font()
+    def open_font_dialog(self):
+        # A simple custom dialog to pick font family
+        font_window = tk.Toplevel(self.root)
+        font_window.title("Font Selection")
+        font_window.geometry("300x250")
+        
+        tk.Label(font_window, text="Font Family:").pack(pady=5)
+        
+        # Listbox for families
+        families = list(font.families())
+        families.sort()
+        listbox = tk.Listbox(font_window, selectmode=tk.SINGLE, height=10)
+        listbox.pack(fill=tk.BOTH, expand=True, padx=10)
+        
+        for f in families:
+            listbox.insert(tk.END, f)
+            
+        def apply_font():
+            selection = listbox.curselection()
+            if selection:
+                self.current_font_family = listbox.get(selection[0])
+                self.update_font()
+                font_window.destroy()
+                
+        tk.Button(font_window, text="OK", command=apply_font).pack(pady=10)
 
     def show_about(self):
-        messagebox.showinfo("About", "Notepad-- Python Edition\nClassic Recreation.\nRunning on Tkinter.")
+        messagebox.showinfo("About", "Notepad-- Python Edition v2\nClassic Recreation.\nRunning on Tkinter.")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    # Add an icon if you have one, otherwise skip
-    # root.iconbitmap("icon.ico") 
     app = NotepadMinusMinus(root)
     root.mainloop()
