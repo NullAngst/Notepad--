@@ -21,46 +21,25 @@ class NotepadMinusMinus:
         self.current_font_family = "Consolas"
         self.current_font_size = 11
         
-        # --- UI Setup ---
-        
-        # Main container to hold text area and scrollbars
-        self.main_frame = tk.Frame(self.root)
-        self.main_frame.pack(fill=tk.BOTH, expand=1)
-
-        # inactiveselectbackground ensures highlight stays visible 
-        # when focus moves to the Find/Replace dialogs.
-        self.text_area = tk.Text(self.main_frame, undo=True, wrap=tk.NONE,
-                                 selectbackground="#0078D7", 
-                                 selectforeground="white",
-                                 inactiveselectbackground="#0078D7") 
-        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
-        
-        self.scrollbar_y = tk.Scrollbar(self.main_frame, command=self.text_area.yview)
-        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.scrollbar_x = tk.Scrollbar(self.root, orient=tk.HORIZONTAL, command=self.text_area.xview)
-        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X) # Pack scrollbar first to sit above status bar? No, usually above or below. 
-        # Standard layout: Text | ScrollY. Bottom: ScrollX. Very Bottom: Status Bar.
-        # Repacking to achieve standard layout:
-        self.scrollbar_x.pack_forget()
-        self.scrollbar_y.pack_forget()
-        self.main_frame.pack_forget()
-        self.text_area.pack_forget()
-
-        # Correct packing order for Status Bar at very bottom
+        # --- UI Layout Setup ---
+        # 1. Status Bar (Packed first at BOTTOM to stick to the very bottom)
         self.status_bar = tk.Label(self.root, text="Ln 1, Col 1  |  Words: 0  |  Chars: 0", 
                                    bd=1, relief=tk.SUNKEN, anchor=tk.E, padx=10)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        self.scrollbar_x = tk.Scrollbar(self.root, orient=tk.HORIZONTAL, command=self.text_area.xview)
-        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-
+        # 2. Main Frame (Occupies the rest of the space)
         self.main_frame = tk.Frame(self.root)
         self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
-        self.scrollbar_y = tk.Scrollbar(self.main_frame, command=self.text_area.yview)
+        # 3. Scrollbars and Text Area
+        self.scrollbar_y = tk.Scrollbar(self.main_frame)
         self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.scrollbar_x = tk.Scrollbar(self.main_frame, orient=tk.HORIZONTAL)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
+        # inactiveselectbackground ensures highlight stays visible 
+        # when focus moves to the Find/Replace dialogs.
         self.text_area = tk.Text(self.main_frame, undo=True, wrap=tk.NONE,
                                  selectbackground="#0078D7", 
                                  selectforeground="white",
@@ -68,6 +47,9 @@ class NotepadMinusMinus:
                                  yscrollcommand=self.scrollbar_y.set,
                                  xscrollcommand=self.scrollbar_x.set)
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+        
+        self.scrollbar_y.config(command=self.text_area.yview)
+        self.scrollbar_x.config(command=self.text_area.xview)
         
         self.apply_font()
 
@@ -146,24 +128,9 @@ class NotepadMinusMinus:
             if not current_title.startswith("*"):
                 self.root.title("*" + current_title)
             
-            # Reset the modified flag immediately so we can detect the next change
-            # But we keep a logic 'is_dirty' via the title or a variable if needed.
-            # However, text.edit_modified(0) resets the internal flag, 
-            # effectively "acknowledging" the event.
-            # For a simple dirty check, checking the title for '*' is an easy hack,
-            # or we can rely on .edit_modified() remaining True until save.
-            # *Correction*: If we want to detect updates continuously for other reasons,
-            # we reset. If we just want to know if it's dirty for Save, we leave it True.
-            # But binding <<Modified>> keeps firing only if we reset it. 
-            # So to update word counts efficiently only on change, we should reset it,
-            # BUT we need a separate persistent 'dirty' variable.
-            
+            # Simple approach: Update status bar on every keystroke (already bound), 
+            # use edit_modified only for the save prompt state.
             self.update_status_bar()
-            # self.text_area.edit_modified(False) # Uncommenting this makes the event fire continuously on typing
-        
-        # Simple approach: Update status bar on every keystroke (already bound), 
-        # use edit_modified only for the save prompt state.
-        pass
 
     def update_status_bar(self, event=None):
         # Position
@@ -264,38 +231,67 @@ class NotepadMinusMinus:
         return True
 
     def print_file(self):
+        # Temp file for content
         temp_file = os.path.abspath("temp_print_job.txt")
         try:
-            # Save current content to temp file
             content = self.text_area.get(1.0, tk.END+'-1c')
             with open(temp_file, "w", encoding="utf-8") as f:
                 f.write(content)
                 
             if sys.platform == "win32":
-                # Use PowerShell to print via the default printer without opening Notepad
-                # 'Out-Printer' sends to the default printer.
-                cmd = f"powershell -Command \"Get-Content -Encoding UTF8 '{temp_file}' | Out-Printer\""
+                # --- Windows Native Print Dialog Strategy ---
+                # We create a temporary PowerShell script to invoke the .NET PrintDialog.
+                # This allows the user to select "Microsoft Print to PDF" or a specific printer.
                 
-                # startupinfo to hide the console window popup
+                ps_dialog_script = """
+Add-Type -AssemblyName System.Windows.Forms
+$pd = New-Object System.Windows.Forms.PrintDialog
+$pd.UseEXDialog = $true
+if ($pd.ShowDialog() -eq 'OK') {
+    Write-Output $pd.PrinterSettings.PrinterName
+}
+"""
+                temp_ps_script = os.path.abspath("temp_print_dialog.ps1")
+                with open(temp_ps_script, "w") as psf:
+                    psf.write(ps_dialog_script)
+                
+                # 1. Run the script to get the printer name
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 
-                subprocess.run(cmd, startupinfo=startupinfo, check=True)
+                result = subprocess.run(
+                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", temp_ps_script],
+                    capture_output=True,
+                    text=True,
+                    startupinfo=startupinfo
+                )
+                
+                printer_name = result.stdout.strip()
+                
+                # Cleanup PS script
+                if os.path.exists(temp_ps_script):
+                    os.remove(temp_ps_script)
+
+                if printer_name:
+                    # 2. Print to the selected printer using Out-Printer
+                    # escaping quotes for the command line
+                    cmd = f"powershell -Command \"Get-Content -Encoding UTF8 '{temp_file}' | Out-Printer -Name '{printer_name}'\""
+                    subprocess.run(cmd, startupinfo=startupinfo, check=True)
+                else:
+                    # User cancelled the dialog
+                    pass
                 
             else:
                 # Unix/Linux/Mac (CUPS)
                 # 'lp' is the standard command
                 subprocess.run(['lp', temp_file], check=True)
-                
-            # Optional: Feedback
-            # messagebox.showinfo("Print", "Sent to default printer.")
             
         except subprocess.CalledProcessError:
             messagebox.showerror("Print Error", "The print command failed. Please check your printer configuration.")
         except Exception as e:
             messagebox.showerror("Print Error", f"Could not print: {e}")
         finally:
-            # Clean up temp file
+            # Clean up content file
             if os.path.exists(temp_file):
                 try: os.remove(temp_file)
                 except: pass
@@ -499,7 +495,7 @@ class NotepadMinusMinus:
 
     # --- Help ---
     def show_about(self):
-        messagebox.showinfo("About Notepad--", "Notepad-- v1.1\n\nUpdates:\n- Cross-platform printing\n- Status Bar\n- Save on exit")
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.2\n\nUpdates:\n- Windows Native Print Dialog\n- Status Bar\n- Save on exit")
 
 if __name__ == "__main__":
     root = tk.Tk()
