@@ -24,11 +24,16 @@ class NotepadMinusMinus:
         self.root.geometry("800x600")
         
         # --- ICON SETUP ---
-        # This sets the icon for the Window Titlebar and the Taskbar
         try:
-            icon_path = resource_path("app_icon.ico")
-            if os.path.exists(icon_path):
-                self.root.iconbitmap(icon_path)
+            if sys.platform.startswith('win'):
+                icon_path = resource_path("app_icon.ico")
+                if os.path.exists(icon_path):
+                    self.root.iconbitmap(icon_path)
+            else:
+                icon_path = resource_path("app_icon.png") 
+                if os.path.exists(icon_path):
+                    img = tk.PhotoImage(file=icon_path)
+                    self.root.iconphoto(True, img)
         except Exception as e:
             print(f"Icon load error: {e}")
 
@@ -42,12 +47,12 @@ class NotepadMinusMinus:
         self.current_font_size = 11
         
         # --- UI Layout Setup ---
-        # 1. Status Bar (Packed first at BOTTOM to stick to the very bottom)
+        # 1. Status Bar 
         self.status_bar = tk.Label(self.root, text="Ln 1, Col 1  |  Words: 0  |  Chars: 0", 
                                    bd=1, relief=tk.SUNKEN, anchor=tk.E, padx=10)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # 2. Main Frame (Occupies the rest of the space)
+        # 2. Main Frame
         self.main_frame = tk.Frame(self.root)
         self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
@@ -58,8 +63,7 @@ class NotepadMinusMinus:
         self.scrollbar_x = tk.Scrollbar(self.main_frame, orient=tk.HORIZONTAL)
         self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # inactiveselectbackground ensures highlight stays visible 
-        # when focus moves to the Find/Replace dialogs.
+        # CREATING TEXT AREA (This needs to happen before loading file)
         self.text_area = tk.Text(self.main_frame, undo=True, wrap=tk.NONE,
                                  selectbackground="#0078D7", 
                                  selectforeground="white",
@@ -73,8 +77,7 @@ class NotepadMinusMinus:
         
         self.apply_font()
 
-        # --- Event Binding for Status & Modified Checks ---
-        # Update status bar on key release and mouse clicks
+        # --- Event Binding ---
         self.text_area.bind("<KeyRelease>", self.update_status_bar)
         self.text_area.bind("<ButtonRelease>", self.update_status_bar)
         self.text_area.bind("<<Modified>>", self.on_modified)
@@ -88,6 +91,13 @@ class NotepadMinusMinus:
 
         # Initialize Modified State
         self.text_area.edit_modified(False)
+
+        # --- MOVED TO BOTTOM: Handle "Open With" / Command Line Arguments ---
+        # Now that self.text_area exists, we can safely load content into it.
+        if len(sys.argv) > 1:
+            file_to_open = sys.argv[1]
+            if os.path.exists(file_to_open):
+                self.load_file_content(file_to_open)
 
     def create_menus(self):
         # File
@@ -176,14 +186,17 @@ class NotepadMinusMinus:
         self.update_status_bar()
         self.text_area.edit_modified(False)
 
+    # Refactored Open Logic
     def open_file(self):
         if not self.check_save():
             return
             
         path = filedialog.askopenfilename(defaultextension=".txt", 
                                           filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
-        if not path: return
-        
+        if path:
+            self.load_file_content(path)
+
+    def load_file_content(self, path):
         self.file_path = path
         self.filename = os.path.basename(path)
         self.root.title(f"{self.filename} - Notepad--")
