@@ -22,24 +22,60 @@ class NotepadMinusMinus:
         self.current_font_size = 11
         
         # --- UI Setup ---
+        
+        # Main container to hold text area and scrollbars
+        self.main_frame = tk.Frame(self.root)
+        self.main_frame.pack(fill=tk.BOTH, expand=1)
+
         # inactiveselectbackground ensures highlight stays visible 
         # when focus moves to the Find/Replace dialogs.
-        self.text_area = tk.Text(self.root, undo=True, wrap=tk.NONE,
+        self.text_area = tk.Text(self.main_frame, undo=True, wrap=tk.NONE,
                                  selectbackground="#0078D7", 
                                  selectforeground="white",
                                  inactiveselectbackground="#0078D7") 
-        self.text_area.pack(fill=tk.BOTH, expand=1)
+        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
         
-        self.scrollbar_y = tk.Scrollbar(self.text_area)
+        self.scrollbar_y = tk.Scrollbar(self.main_frame, command=self.text_area.yview)
         self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        self.scrollbar_x = tk.Scrollbar(self.text_area, orient=tk.HORIZONTAL)
-        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
         
-        self.text_area.config(yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
-        self.scrollbar_y.config(command=self.text_area.yview)
-        self.scrollbar_x.config(command=self.text_area.xview)
+        self.scrollbar_x = tk.Scrollbar(self.root, orient=tk.HORIZONTAL, command=self.text_area.xview)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X) # Pack scrollbar first to sit above status bar? No, usually above or below. 
+        # Standard layout: Text | ScrollY. Bottom: ScrollX. Very Bottom: Status Bar.
+        # Repacking to achieve standard layout:
+        self.scrollbar_x.pack_forget()
+        self.scrollbar_y.pack_forget()
+        self.main_frame.pack_forget()
+        self.text_area.pack_forget()
 
+        # Correct packing order for Status Bar at very bottom
+        self.status_bar = tk.Label(self.root, text="Ln 1, Col 1  |  Words: 0  |  Chars: 0", 
+                                   bd=1, relief=tk.SUNKEN, anchor=tk.E, padx=10)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.scrollbar_x = tk.Scrollbar(self.root, orient=tk.HORIZONTAL, command=self.text_area.xview)
+        self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.main_frame = tk.Frame(self.root)
+        self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+        self.scrollbar_y = tk.Scrollbar(self.main_frame, command=self.text_area.yview)
+        self.scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.text_area = tk.Text(self.main_frame, undo=True, wrap=tk.NONE,
+                                 selectbackground="#0078D7", 
+                                 selectforeground="white",
+                                 inactiveselectbackground="#0078D7",
+                                 yscrollcommand=self.scrollbar_y.set,
+                                 xscrollcommand=self.scrollbar_x.set)
+        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
+        
         self.apply_font()
+
+        # --- Event Binding for Status & Modified Checks ---
+        # Update status bar on key release and mouse clicks
+        self.text_area.bind("<KeyRelease>", self.update_status_bar)
+        self.text_area.bind("<ButtonRelease>", self.update_status_bar)
+        self.text_area.bind("<<Modified>>", self.on_modified)
 
         # --- Menus ---
         self.menu_bar = tk.Menu(self.root)
@@ -47,6 +83,9 @@ class NotepadMinusMinus:
         self.create_menus()
         self.bind_shortcuts()
         self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
+
+        # Initialize Modified State
+        self.text_area.edit_modified(False)
 
     def create_menus(self):
         # File
@@ -98,15 +137,62 @@ class NotepadMinusMinus:
         self.root.bind("<Control-h>", lambda e: self.open_replace_dialog())
         self.root.bind("<F5>", lambda e: self.insert_time_date())
 
+    # --- Status Bar & Events ---
+
+    def on_modified(self, event=None):
+        if self.text_area.edit_modified():
+            # Update Title with *
+            current_title = self.root.title()
+            if not current_title.startswith("*"):
+                self.root.title("*" + current_title)
+            
+            # Reset the modified flag immediately so we can detect the next change
+            # But we keep a logic 'is_dirty' via the title or a variable if needed.
+            # However, text.edit_modified(0) resets the internal flag, 
+            # effectively "acknowledging" the event.
+            # For a simple dirty check, checking the title for '*' is an easy hack,
+            # or we can rely on .edit_modified() remaining True until save.
+            # *Correction*: If we want to detect updates continuously for other reasons,
+            # we reset. If we just want to know if it's dirty for Save, we leave it True.
+            # But binding <<Modified>> keeps firing only if we reset it. 
+            # So to update word counts efficiently only on change, we should reset it,
+            # BUT we need a separate persistent 'dirty' variable.
+            
+            self.update_status_bar()
+            # self.text_area.edit_modified(False) # Uncommenting this makes the event fire continuously on typing
+        
+        # Simple approach: Update status bar on every keystroke (already bound), 
+        # use edit_modified only for the save prompt state.
+        pass
+
+    def update_status_bar(self, event=None):
+        # Position
+        row, col = self.text_area.index(tk.INSERT).split('.')
+        col = int(col) + 1
+        
+        # Content stats
+        content = self.text_area.get(1.0, tk.END+'-1c') # -1c to remove the always-present newline at end
+        char_count = len(content)
+        word_count = len(content.split())
+        
+        self.status_bar.config(text=f"Ln {row}, Col {col}  |  Words: {word_count}  |  Chars: {char_count}")
+
     # --- File Operations ---
 
     def new_file(self):
+        if not self.check_save():
+            return
         self.text_area.delete(1.0, tk.END)
         self.filename = "Untitled"
         self.file_path = None
         self.root.title("Notepad--")
+        self.update_status_bar()
+        self.text_area.edit_modified(False)
 
     def open_file(self):
+        if not self.check_save():
+            return
+            
         path = filedialog.askopenfilename(defaultextension=".txt", 
                                           filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
         if not path: return
@@ -135,43 +221,77 @@ class NotepadMinusMinus:
                     content = raw.decode('latin-1')
                     
             self.text_area.insert(1.0, content)
+            self.update_status_bar()
+            self.text_area.edit_modified(False)
         except Exception as e:
             messagebox.showerror("Error", f"Could not read file: {e}")
 
     def save_file(self):
         if self.file_path is None:
-            self.save_file_as()
+            return self.save_file_as()
         else:
             try:
-                content = self.text_area.get(1.0, tk.END).rstrip()
+                content = self.text_area.get(1.0, tk.END+'-1c')
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     f.write(content)
                 self.root.title(f"{self.filename} - Notepad--")
+                self.text_area.edit_modified(False)
+                return True
             except Exception as e:
                 messagebox.showerror("Error", str(e))
+                return False
 
     def save_file_as(self):
-        path = filedialog.asksaveasfilename(initialfile="Untitled.txt",
+        path = filedialog.asksaveasfilename(initialfile=self.filename,
                                             defaultextension=".txt",
                                             filetypes=[("Text Documents", "*.txt"), ("All Files", "*.*")])
         if path:
             self.file_path = path
             self.filename = os.path.basename(path)
-            self.save_file()
+            return self.save_file()
+        return False
+
+    def check_save(self):
+        """Returns True if it's safe to proceed (saved, discarded, or not modified)."""
+        if self.text_area.edit_modified():
+            response = messagebox.askyesnocancel("Notepad--", "Do you want to save changes to " + self.filename + "?")
+            if response is True:   # Save
+                return self.save_file()
+            elif response is False: # Don't save
+                return True
+            else: # Cancel
+                return False
+        return True
 
     def print_file(self):
-        # Use 'notepad.exe /p' for reliable Windows printing
-        temp_file = os.path.abspath("temp_print.txt")
+        temp_file = os.path.abspath("temp_print_job.txt")
         try:
+            # Save current content to temp file
+            content = self.text_area.get(1.0, tk.END+'-1c')
             with open(temp_file, "w", encoding="utf-8") as f:
-                f.write(self.text_area.get(1.0, tk.END))
+                f.write(content)
                 
             if sys.platform == "win32":
-                # This opens the hidden notepad instance, prints to default printer, and closes.
-                subprocess.run(['notepad.exe', '/p', temp_file], check=True)
+                # Use PowerShell to print via the default printer without opening Notepad
+                # 'Out-Printer' sends to the default printer.
+                cmd = f"powershell -Command \"Get-Content -Encoding UTF8 '{temp_file}' | Out-Printer\""
+                
+                # startupinfo to hide the console window popup
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+                subprocess.run(cmd, startupinfo=startupinfo, check=True)
+                
             else:
-                # Unix/Linux/Mac
+                # Unix/Linux/Mac (CUPS)
+                # 'lp' is the standard command
                 subprocess.run(['lp', temp_file], check=True)
+                
+            # Optional: Feedback
+            # messagebox.showinfo("Print", "Sent to default printer.")
+            
+        except subprocess.CalledProcessError:
+            messagebox.showerror("Print Error", "The print command failed. Please check your printer configuration.")
         except Exception as e:
             messagebox.showerror("Print Error", f"Could not print: {e}")
         finally:
@@ -181,11 +301,14 @@ class NotepadMinusMinus:
                 except: pass
 
     def on_exit(self):
-        self.root.destroy()
+        if self.check_save():
+            self.root.destroy()
 
     # --- Editing ---
     def delete_selection(self):
-        try: self.text_area.delete("sel.first", "sel.last")
+        try: 
+            self.text_area.delete("sel.first", "sel.last")
+            self.update_status_bar()
         except tk.TclError: pass
 
     def select_all(self):
@@ -195,6 +318,7 @@ class NotepadMinusMinus:
     def insert_time_date(self):
         now = datetime.now().strftime("%I:%M %p %m/%d/%Y")
         self.text_area.insert(tk.INSERT, now)
+        self.update_status_bar()
 
     # --- Find & Replace ---
 
@@ -260,6 +384,7 @@ class NotepadMinusMinus:
                 if self.text_area.get(sel_start, sel_end) == target:
                     self.text_area.delete(sel_start, sel_end)
                     self.text_area.insert(sel_start, replacement)
+                    self.update_status_bar()
             except tk.TclError: pass
             
             start_pos = self.text_area.index(tk.INSERT)
@@ -285,6 +410,7 @@ class NotepadMinusMinus:
                 self.text_area.insert(pos, replacement)
                 current_pos = f"{pos}+{len(replacement)}c"
                 count += 1
+            if count > 0: self.update_status_bar()
             messagebox.showinfo("Notepad--", f"Replaced {count} occurrences.")
 
         tk.Button(self.replace_window, text="Find Next", command=replace_one).grid(row=0, column=2, padx=4, pady=2)
@@ -373,7 +499,7 @@ class NotepadMinusMinus:
 
     # --- Help ---
     def show_about(self):
-        messagebox.showinfo("About Notepad--", "Notepad-- v1.0\nA lightweight text editor.\n\nWritten in Python/Tkinter.")
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.1\n\nUpdates:\n- Cross-platform printing\n- Status Bar\n- Save on exit")
 
 if __name__ == "__main__":
     root = tk.Tk()
