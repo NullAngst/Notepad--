@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, font, simpledialog
+from tkinter import filedialog, messagebox, font
 import os
 import sys
 import codecs
+import subprocess
 from datetime import datetime
 
 class NotepadMinusMinus:
@@ -15,11 +16,18 @@ class NotepadMinusMinus:
         self.filename = "Untitled"
         self.file_path = None
         self.word_wrap = False
+        
+        # Default Font State
         self.current_font_family = "Consolas"
         self.current_font_size = 11
         
         # --- UI Setup ---
-        self.text_area = tk.Text(self.root, undo=True, wrap=tk.NONE)
+        # FIX #2: inactiveselectbackground ensures highlight stays visible 
+        # when focus moves to the Find/Replace dialogs.
+        self.text_area = tk.Text(self.root, undo=True, wrap=tk.NONE,
+                                 selectbackground="#0078D7", 
+                                 selectforeground="white",
+                                 inactiveselectbackground="#0078D7") 
         self.text_area.pack(fill=tk.BOTH, expand=1)
         
         self.scrollbar_y = tk.Scrollbar(self.text_area)
@@ -31,7 +39,7 @@ class NotepadMinusMinus:
         self.scrollbar_y.config(command=self.text_area.yview)
         self.scrollbar_x.config(command=self.text_area.xview)
 
-        self.update_font()
+        self.apply_font()
 
         # --- Menus ---
         self.menu_bar = tk.Menu(self.root)
@@ -108,10 +116,9 @@ class NotepadMinusMinus:
         self.root.title(f"{self.filename} - Notepad--")
         self.text_area.delete(1.0, tk.END)
         
-        # IMPROVED LOADING: Try UTF-8, then UTF-16, then fallback
+        # BOM Detection
         content = ""
         try:
-            # First, check for BOMs manually to be sure
             with open(path, 'rb') as f:
                 raw = f.read()
             
@@ -122,14 +129,12 @@ class NotepadMinusMinus:
             elif raw.startswith(codecs.BOM_UTF8):
                 content = raw.decode('utf-8-sig')
             else:
-                # No BOM, try UTF-8, if fail, try Latin-1
                 try:
                     content = raw.decode('utf-8')
                 except UnicodeDecodeError:
                     content = raw.decode('latin-1')
                     
             self.text_area.insert(1.0, content)
-
         except Exception as e:
             messagebox.showerror("Error", f"Could not read file: {e}")
 
@@ -139,7 +144,6 @@ class NotepadMinusMinus:
         else:
             try:
                 content = self.text_area.get(1.0, tk.END).rstrip()
-                # Default to UTF-8 for saving
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     f.write(content)
                 self.root.title(f"{self.filename} - Notepad--")
@@ -156,20 +160,25 @@ class NotepadMinusMinus:
             self.save_file()
 
     def print_file(self):
-        # Generate a temporary file to print
-        temp_file = "temp_print.txt"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            f.write(self.text_area.get(1.0, tk.END))
-            
+        # FIX #3: Use 'notepad.exe /p' for reliable Windows printing
+        temp_file = os.path.abspath("temp_print.txt")
         try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                f.write(self.text_area.get(1.0, tk.END))
+                
             if sys.platform == "win32":
-                # Windows: Use os.startfile with 'print' verb
-                os.startfile(temp_file, "print")
+                # This opens the hidden notepad instance, prints to default printer, and closes.
+                subprocess.run(['notepad.exe', '/p', temp_file], check=True)
             else:
-                # Linux/macOS: Use 'lp' (CUPS)
-                os.system(f"lp {temp_file}")
+                # Unix/Linux/Mac
+                subprocess.run(['lp', temp_file], check=True)
         except Exception as e:
             messagebox.showerror("Print Error", f"Could not print: {e}")
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_file):
+                try: os.remove(temp_file)
+                except: pass
 
     def on_exit(self):
         self.root.destroy()
@@ -187,7 +196,7 @@ class NotepadMinusMinus:
         now = datetime.now().strftime("%I:%M %p %m/%d/%Y")
         self.text_area.insert(tk.INSERT, now)
 
-    # --- Find & Replace (Fixed Highlighting) ---
+    # --- Find & Replace ---
 
     def open_find_dialog(self):
         if hasattr(self, 'find_window') and self.find_window.winfo_exists():
@@ -196,7 +205,7 @@ class NotepadMinusMinus:
             
         self.find_window = tk.Toplevel(self.root)
         self.find_window.title("Find")
-        self.find_window.geometry("320x80")
+        self.find_window.geometry("340x80")
         self.find_window.resizable(False, False)
 
         tk.Label(self.find_window, text="Find what:").grid(row=0, column=0, padx=4, pady=4)
@@ -218,15 +227,11 @@ class NotepadMinusMinus:
                     self.text_area.tag_add("sel", pos, end_pos)
                     self.text_area.mark_set(tk.INSERT, end_pos)
                     self.text_area.see(pos)
-                    
-                    # FIX: Force focus back to main text area so highlighting shows
-                    # Then force focus back to entry so you can hit Enter again
-                    self.text_area.focus_set()
-                    self.find_window.after(50, lambda: entry_find.focus_set())
+                    # Because we set inactiveselectbackground, we don't need to force focus back
+                    # to make the highlight visible. We keep focus on the Entry for better UX.
                 else:
                     messagebox.showinfo("Notepad--", f"Cannot find \"{target}\"")
 
-        # Bind Enter key to 'Find Next'
         entry_find.bind('<Return>', lambda e: find_next())
         tk.Button(self.find_window, text="Find Next", command=find_next).grid(row=0, column=2, padx=4, pady=4)
 
@@ -252,7 +257,6 @@ class NotepadMinusMinus:
             target = entry_find.get()
             replacement = entry_replace.get()
             try:
-                # Check if current selection matches target
                 sel_start = self.text_area.index("sel.first")
                 sel_end = self.text_area.index("sel.last")
                 if self.text_area.get(sel_start, sel_end) == target:
@@ -260,7 +264,6 @@ class NotepadMinusMinus:
                     self.text_area.insert(sel_start, replacement)
             except tk.TclError: pass
             
-            # Find next occurrence
             start_pos = self.text_area.index(tk.INSERT)
             pos = self.text_area.search(target, start_pos, stopindex=tk.END)
             if pos:
@@ -269,8 +272,6 @@ class NotepadMinusMinus:
                 self.text_area.tag_add("sel", pos, end_pos)
                 self.text_area.mark_set(tk.INSERT, end_pos)
                 self.text_area.see(pos)
-                self.text_area.focus_set()
-                self.replace_window.after(50, lambda: entry_replace.focus_set())
 
         def replace_all():
             target = entry_find.get()
@@ -292,44 +293,85 @@ class NotepadMinusMinus:
         tk.Button(self.replace_window, text="Replace", command=replace_one).grid(row=1, column=2, padx=4, pady=2)
         tk.Button(self.replace_window, text="Replace All", command=replace_all).grid(row=2, column=2, padx=4, pady=2)
 
-    # --- Format (Improved Font Selector) ---
+    # --- Format (FIX #1: Font Family AND Size) ---
 
     def toggle_word_wrap(self):
         self.word_wrap = not self.word_wrap
         self.text_area.config(wrap=tk.WORD if self.word_wrap else tk.NONE)
 
-    def update_font(self):
+    def apply_font(self):
         new_font = font.Font(family=self.current_font_family, size=self.current_font_size)
         self.text_area.configure(font=new_font)
 
     def open_font_dialog(self):
-        # A simple custom dialog to pick font family
+        # A dual-listbox dialog for Family and Size
         font_window = tk.Toplevel(self.root)
-        font_window.title("Font Selection")
-        font_window.geometry("300x250")
+        font_window.title("Font")
+        font_window.geometry("400x300")
         
-        tk.Label(font_window, text="Font Family:").pack(pady=5)
+        # Frames
+        frame_family = tk.Frame(font_window)
+        frame_family.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Listbox for families
+        frame_size = tk.Frame(font_window)
+        frame_size.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
+
+        # Labels
+        tk.Label(frame_family, text="Font:").pack(anchor="w")
+        tk.Label(frame_size, text="Size:").pack(anchor="w")
+
+        # Family List
         families = list(font.families())
         families.sort()
-        listbox = tk.Listbox(font_window, selectmode=tk.SINGLE, height=10)
-        listbox.pack(fill=tk.BOTH, expand=True, padx=10)
-        
-        for f in families:
-            listbox.insert(tk.END, f)
-            
-        def apply_font():
-            selection = listbox.curselection()
-            if selection:
-                self.current_font_family = listbox.get(selection[0])
-                self.update_font()
-                font_window.destroy()
-                
-        tk.Button(font_window, text="OK", command=apply_font).pack(pady=10)
+        list_family = tk.Listbox(frame_family, exportselection=False) # exportselection=False keeps highlights on both lists
+        list_family.pack(fill=tk.BOTH, expand=True)
+        scrollbar_fam = tk.Scrollbar(list_family)
+        scrollbar_fam.pack(side=tk.RIGHT, fill=tk.Y)
+        list_family.config(yscrollcommand=scrollbar_fam.set)
+        scrollbar_fam.config(command=list_family.yview)
 
-    def show_about(self):
-        messagebox.showinfo("About", "Notepad-- Python Edition v2\nClassic Recreation.\nRunning on Tkinter.")
+        for f in families:
+            list_family.insert(tk.END, f)
+        
+        # Select current
+        try:
+            idx = families.index(self.current_font_family)
+            list_family.selection_set(idx)
+            list_family.see(idx)
+        except: pass
+
+        # Size List
+        sizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72]
+        list_size = tk.Listbox(frame_size, width=10, exportselection=False)
+        list_size.pack(fill=tk.BOTH, expand=True)
+        
+        for s in sizes:
+            list_size.insert(tk.END, str(s))
+
+        # Select current size
+        try:
+            if self.current_font_size in sizes:
+                idx = sizes.index(self.current_font_size)
+                list_size.selection_set(idx)
+                list_size.see(idx)
+        except: pass
+
+        def on_ok():
+            # Get Family
+            fam_idx = list_family.curselection()
+            if fam_idx:
+                self.current_font_family = list_family.get(fam_idx[0])
+            
+            # Get Size
+            size_idx = list_size.curselection()
+            if size_idx:
+                self.current_font_size = int(list_size.get(size_idx[0]))
+            
+            self.apply_font()
+            font_window.destroy()
+
+        tk.Button(font_window, text="OK", command=on_ok, width=10).pack(side=tk.BOTTOM, pady=5)
+        tk.Button(font_window, text="Cancel", command=font_window.destroy, width=10).pack(side=tk.BOTTOM, pady=5)
 
 if __name__ == "__main__":
     root = tk.Tk()
