@@ -7,12 +7,31 @@ import subprocess
 import threading
 from datetime import datetime
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 class NotepadMinusMinus:
     def __init__(self, root):
         self.root = root
         self.root.title("Notepad--")
         self.root.geometry("800x600")
         
+        # --- ICON SETUP ---
+        # This sets the icon for the Window Titlebar and the Taskbar
+        try:
+            icon_path = resource_path("app_icon.ico")
+            if os.path.exists(icon_path):
+                self.root.iconbitmap(icon_path)
+        except Exception as e:
+            print(f"Icon load error: {e}")
+
         # --- State Variables ---
         self.filename = "Untitled"
         self.file_path = None
@@ -563,7 +582,7 @@ if ($pd.ShowDialog() -eq 'OK') {{
 
     # --- Help ---
     def show_about(self):
-        messagebox.showinfo("About Notepad--", "Notepad-- v1.4\nA recreation of the classic Notepad in Python.")
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.5\nA recreation of the classic Notepad in Python.")
 
 if __name__ == "__main__":
     root = tk.Tk()
