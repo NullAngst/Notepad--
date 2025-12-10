@@ -4,6 +4,7 @@ import os
 import sys
 import codecs
 import subprocess
+import threading
 from datetime import datetime
 
 class NotepadMinusMinus:
@@ -237,59 +238,112 @@ class NotepadMinusMinus:
             content = self.text_area.get(1.0, tk.END+'-1c')
             with open(temp_file, "w", encoding="utf-8") as f:
                 f.write(content)
-                
+            
+            # Start printing in a separate thread to avoid freezing GUI
+            print_thread = threading.Thread(target=self._run_print_job, args=(temp_file,), daemon=True)
+            print_thread.start()
+            
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Could not prepare print job: {e}")
+
+    def _run_print_job(self, temp_file):
+        try:
             if sys.platform == "win32":
-                # --- Windows Native Print Dialog Strategy ---
-                # We create a temporary PowerShell script to invoke the .NET PrintDialog.
-                # This allows the user to select "Microsoft Print to PDF" or a specific printer.
-                
-                ps_dialog_script = """
+                # --- Windows Native .NET Printing Strategy ---
+                ps_script_content = f"""
+param($filePath)
+Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
+
+# 1. Show Print Dialog
 $pd = New-Object System.Windows.Forms.PrintDialog
 $pd.UseEXDialog = $true
-if ($pd.ShowDialog() -eq 'OK') {
-    Write-Output $pd.PrinterSettings.PrinterName
-}
+
+if ($pd.ShowDialog() -eq 'OK') {{
+    # 2. Setup Print Document
+    $printDoc = New-Object System.Drawing.Printing.PrintDocument
+    $printDoc.PrinterSettings = $pd.PrinterSettings
+    $printDoc.DocumentName = "Notepad-- Document"
+    
+    # SUPPRESS the 'Printing...' status dialog to prevent freezing/hanging
+    $printDoc.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+    
+    # 3. Read Content
+    if (Test-Path $filePath) {{
+        $lines = Get-Content $filePath
+    }} else {{
+        $lines = @("Error: Could not read content.")
+    }}
+    
+    # Setup Font (Consolas 11 to match editor)
+    $font = New-Object System.Drawing.Font("Consolas", 11)
+    $brush = [System.Drawing.Brushes]::Black
+    
+    # Track current line index across pages (script scope)
+    $script:lineIdx = 0
+    
+    # 4. Define Print Page Event
+    $printDoc.add_PrintPage({{
+        param($sender, $e)
+        
+        $y = $e.MarginBounds.Top
+        $left = $e.MarginBounds.Left
+        $lineHeight = $font.GetHeight($e.Graphics)
+        
+        # Print lines until page is full
+        while ($y + $lineHeight -lt $e.MarginBounds.Bottom -and $script:lineIdx -lt $lines.Count) {{
+            $line = $lines[$script:lineIdx]
+            
+            # DrawString handles the text rendering
+            $e.Graphics.DrawString($line, $font, $brush, $left, $y)
+            
+            $y += $lineHeight
+            $script:lineIdx++
+        }}
+        
+        # Check if more pages are needed
+        if ($script:lineIdx -lt $lines.Count) {{
+            $e.HasMorePages = $true
+        }} else {{
+            $e.HasMorePages = $false
+        }}
+    }})
+    
+    # 5. Print
+    try {{
+        $printDoc.Print()
+    }} catch {{
+        Write-Error "Printing Failed: $_"
+    }}
+}}
 """
-                temp_ps_script = os.path.abspath("temp_print_dialog.ps1")
-                with open(temp_ps_script, "w") as psf:
-                    psf.write(ps_dialog_script)
+                temp_ps_script = os.path.abspath("temp_print_logic.ps1")
+                with open(temp_ps_script, "w", encoding="utf-8") as psf:
+                    psf.write(ps_script_content)
                 
-                # 1. Run the script to get the printer name
+                # Execute PowerShell script (Hidden window)
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 
-                result = subprocess.run(
-                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", temp_ps_script],
-                    capture_output=True,
-                    text=True,
-                    startupinfo=startupinfo
+                subprocess.run(
+                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", temp_ps_script, "-filePath", temp_file],
+                    startupinfo=startupinfo,
+                    check=True
                 )
-                
-                printer_name = result.stdout.strip()
                 
                 # Cleanup PS script
                 if os.path.exists(temp_ps_script):
-                    os.remove(temp_ps_script)
-
-                if printer_name:
-                    # 2. Print to the selected printer using Out-Printer
-                    # escaping quotes for the command line
-                    cmd = f"powershell -Command \"Get-Content -Encoding UTF8 '{temp_file}' | Out-Printer -Name '{printer_name}'\""
-                    subprocess.run(cmd, startupinfo=startupinfo, check=True)
-                else:
-                    # User cancelled the dialog
-                    pass
+                    try: os.remove(temp_ps_script)
+                    except: pass
                 
             else:
                 # Unix/Linux/Mac (CUPS)
-                # 'lp' is the standard command
                 subprocess.run(['lp', temp_file], check=True)
-            
-        except subprocess.CalledProcessError:
-            messagebox.showerror("Print Error", "The print command failed. Please check your printer configuration.")
+                
+        except subprocess.CalledProcessError as e:
+            self.root.after(0, lambda: messagebox.showerror("Print Error", f"The print process failed.\n{e}"))
         except Exception as e:
-            messagebox.showerror("Print Error", f"Could not print: {e}")
+            self.root.after(0, lambda: messagebox.showerror("Print Error", f"Could not print: {e}"))
         finally:
             # Clean up content file
             if os.path.exists(temp_file):
@@ -490,12 +544,16 @@ if ($pd.ShowDialog() -eq 'OK') {
             self.apply_font()
             font_window.destroy()
 
-        tk.Button(font_window, text="OK", command=on_ok, width=10).pack(side=tk.BOTTOM, pady=5)
-        tk.Button(font_window, text="Cancel", command=font_window.destroy, width=10).pack(side=tk.BOTTOM, pady=5)
+        # Button Frame (Bottom)
+        btn_frame = tk.Frame(font_window)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+        
+        tk.Button(btn_frame, text="Cancel", command=font_window.destroy, width=10).pack(side=tk.RIGHT, padx=10)
+        tk.Button(btn_frame, text="OK", command=on_ok, width=10).pack(side=tk.RIGHT, padx=10)
 
     # --- Help ---
     def show_about(self):
-        messagebox.showinfo("About Notepad--", "Notepad-- v1.2\n\nUpdates:\n- Windows Native Print Dialog\n- Status Bar\n- Save on exit")
+        messagebox.showinfo("About Notepad--", "Notepad-- v1.3.2\n\nUpdates:\n- Fixed PDF printing freeze (Threading)\n- Suppressed default print popup")
 
 if __name__ == "__main__":
     root = tk.Tk()
