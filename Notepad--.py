@@ -5,6 +5,7 @@ import sys
 import codecs
 import subprocess
 import threading
+import tempfile
 from datetime import datetime
 
 def resource_path(relative_path):
@@ -63,7 +64,7 @@ class NotepadMinusMinus:
         self.scrollbar_x = tk.Scrollbar(self.main_frame, orient=tk.HORIZONTAL)
         self.scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # CREATING TEXT AREA (This needs to happen before loading file)
+        # CREATING TEXT AREA
         self.text_area = tk.Text(self.main_frame, undo=True, wrap=tk.NONE,
                                  selectbackground="#0078D7", 
                                  selectforeground="white",
@@ -92,8 +93,7 @@ class NotepadMinusMinus:
         # Initialize Modified State
         self.text_area.edit_modified(False)
 
-        # --- MOVED TO BOTTOM: Handle "Open With" / Command Line Arguments ---
-        # Now that self.text_area exists, we can safely load content into it.
+        # --- Command Line Arguments (Open With) ---
         if len(sys.argv) > 1:
             file_to_open = sys.argv[1]
             if os.path.exists(file_to_open):
@@ -157,9 +157,6 @@ class NotepadMinusMinus:
             current_title = self.root.title()
             if not current_title.startswith("*"):
                 self.root.title("*" + current_title)
-            
-            # Simple approach: Update status bar on every keystroke (already bound), 
-            # use edit_modified only for the save prompt state.
             self.update_status_bar()
 
     def update_status_bar(self, event=None):
@@ -168,7 +165,7 @@ class NotepadMinusMinus:
         col = int(col) + 1
         
         # Content stats
-        content = self.text_area.get(1.0, tk.END+'-1c') # -1c to remove the always-present newline at end
+        content = self.text_area.get(1.0, tk.END+'-1c') 
         char_count = len(content)
         word_count = len(content.split())
         
@@ -186,7 +183,6 @@ class NotepadMinusMinus:
         self.update_status_bar()
         self.text_area.edit_modified(False)
 
-    # Refactored Open Logic
     def open_file(self):
         if not self.check_save():
             return
@@ -252,20 +248,21 @@ class NotepadMinusMinus:
         return False
 
     def check_save(self):
-        """Returns True if it's safe to proceed (saved, discarded, or not modified)."""
         if self.text_area.edit_modified():
             response = messagebox.askyesnocancel("Notepad--", "Do you want to save changes to " + self.filename + "?")
-            if response is True:   # Save
+            if response is True:   
                 return self.save_file()
-            elif response is False: # Don't save
+            elif response is False: 
                 return True
-            else: # Cancel
+            else: 
                 return False
         return True
 
     def print_file(self):
-        # Temp file for content
-        temp_file = os.path.abspath("temp_print_job.txt")
+        # Use system temp directory (Works for Write Protected Program Files)
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, "npmm_print_job.txt")
+        
         try:
             content = self.text_area.get(1.0, tk.END+'-1c')
             with open(temp_file, "w", encoding="utf-8") as f:
@@ -359,7 +356,10 @@ if ($pd.ShowDialog() -eq 'OK') {{
     }}
 }}
 """
-                temp_ps_script = os.path.abspath("temp_print_logic.ps1")
+                # Save script to System Temp directory
+                temp_dir = tempfile.gettempdir()
+                temp_ps_script = os.path.join(temp_dir, "npmm_print_logic.ps1")
+                
                 with open(temp_ps_script, "w", encoding="utf-8") as psf:
                     psf.write(ps_script_content)
                 
