@@ -16,7 +16,7 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -40,7 +40,7 @@ jobs:
         pyinstaller --noconsole --onefile --hidden-import=tkinter --add-data="app_icon.png:." --name="notepad--" "notepad--.py"
 
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Notepad--_${{ matrix.os }}
         path: dist/
