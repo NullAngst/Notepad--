@@ -8,12 +8,16 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  # ------------------------------------------------------------------
+  # JOB 1: Build for Windows (onefile) and Linux (onefile)
+  # ------------------------------------------------------------------
+  build_win_linux:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      # Only target Windows and Ubuntu for this job
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -27,18 +31,78 @@ jobs:
       run: |
         pip install pyinstaller
 
+    # --- Windows Build (onefile) ---
     - name: Build with PyInstaller (Windows)
       if: runner.os == 'Windows'
       run: |
         pyinstaller --noconsole --onefile --icon="app_icon.ico" --add-data="app_icon.ico;." --name="notepad--" "notepad--.py"
 
-    - name: Build with PyInstaller (Linux/Mac)
-      if: runner.os != 'Windows'
+    # --- Linux Build (onefile) ---
+    - name: Build with PyInstaller (Linux)
+      if: runner.os == 'Linux'
+      # Keep --onefile as requested for Linux
       run: |
+        # Use a generic icon extension for Linux build if applicable
         pyinstaller --noconsole --onefile --hidden-import=tkinter --add-data="app_icon.png:." --name="notepad--" "notepad--.py"
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Notepad--_${{ matrix.os }}
+        path: dist/
+
+  # ------------------------------------------------------------------
+  # JOB 2: Build for macOS (onedir/app bundle) and DMG creation
+  # ------------------------------------------------------------------
+  build_macos:
+    name: Build and DMG for macOS
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install Dependencies & create-dmg
+      run: |
+        # Install Python dependencies
+        pip install pyinstaller
+        # Install the DMG creation utility using Homebrew
+        brew install create-dmg
+
+    # --- macOS Build (onedir) ---
+    - name: Build with PyInstaller (macOS)
+      run: |
+        # Using --onedir is mandatory for creating the .app bundle structure
+        pyinstaller --noconsole --onedir --hidden-import=tkinter --add-data="app_icon.png:." --name="notepad--" "notepad--.py"
+
+    # --- Create DMG ---
+    - name: Create macOS DMG
+      run: |
+        # 1. Define paths and names
+        APP_NAME="notepad--"
+        DMG_NAME="${APP_NAME}-Installer.dmg"
+        APP_PATH="dist/${APP_NAME}.app"
+
+        # 2. Use create-dmg to bundle the application
+        # 
+        create-dmg \
+          --volname "${APP_NAME} Installer" \
+          --window-size 500 300 \
+          --icon "${APP_NAME}.app" 120 120 \
+          --app-drop-link 380 120 \
+          "${DMG_NAME}" \
+          "${APP_PATH}"
+
+        # 3. Move the final DMG file to the 'dist' folder for artifact upload
+        mv "${DMG_NAME}" dist/
+
+    - name: Upload macOS Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Notepad--_macos-latest
+        # Only upload the DMG file (and potentially the dist folder contents)
         path: dist/
