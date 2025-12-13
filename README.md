@@ -3,8 +3,9 @@
 **A recreation of the classic Notepad, written in Python for cross platform compatibility.**
 <br>
 This app is my vision for Notepad as it should be (before AI and other "bloat" *I hate that word*) was added by a certain company. Can be run directly with the single Python file or with one of the binaries (compiled with PyInstaller) included in the releases. The Windows™ binary does not require Python to be installed.
-
-Features include:
+<br>
+<br>
+Basic features include:
 1. Plain text editing.
 2. Character count.
 3. Line count.
@@ -14,3 +15,12 @@ Features include:
 7. Find/replace
 <br>
 <img src="https://github.com/MZGSZM/Notepad--/blob/main/light.png?raw=true">
+<br>
+<br>
+Extra features (disabled by default) include:
+
+1. Dark theme
+2. Syntax highlighting
+3. Line Numbers
+<br>
+<img src="https://github.com/MZGSZM/Notepad--/blob/main/dark-extras.png?raw=true">
