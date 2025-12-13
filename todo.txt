@@ -1,0 +1,3 @@
+Planned changes/fixes:
+1. Better line number handling when using word wrap.
+2. Slight weirdness with replace for multiple single replacements in a row.
