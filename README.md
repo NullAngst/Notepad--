@@ -22,6 +22,8 @@ Extra features (disabled by default) include:
 1. Dark theme
 2. Syntax highlighting
 3. Line Numbers
+
 (Toggle from View Menu.)
+<br>
 <br>
 <img src="https://github.com/MZGSZM/Notepad--/blob/main/dark-extras.png?raw=true">
