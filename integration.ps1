@@ -2,7 +2,7 @@
 .SYNOPSIS
     Integrates Notepad-- into Windows Context Menus and File Associations.
 .DESCRIPTION
-    v3 Fix: Uses 'reg.exe' for the Context Menu to avoid PowerShell 5.1 wildcard expansion hangs.
+    v4 Fix: Adds "Open With" registration for Windows 11 Modern Menu support.
 #>
 
 # -----------------------------------------------------------------------------
@@ -27,7 +27,8 @@ if (-not (Get-PSDrive -Name HKCR -ErrorAction SilentlyContinue)) {
 # -----------------------------------------------------------------------------
 $ProgID = "NotepadMinusMinus.File"
 $AppName = "Notepad--"
-$ContextMenuName = "Open with Notepad--"
+$AppExeName = "notepad--.exe" # Used for Applications registration
+$ContextMenuName = "Edit with Notepad--" # Renamed to "Edit with" to distinguish from "Open with" submenu
 # List of extensions to associate
 $TargetExtensions = @(
     ".txt", ".log", ".md", ".json", ".xml", ".yaml", ".yml", 
@@ -66,7 +67,7 @@ function Install-Integration {
     $escapedCommand = $command.Replace('"', '\"') # Escape quotes for reg.exe
 
     try {
-        # --- A. Create the ProgID (PowerShell is fine here) ---
+        # --- A. Create the ProgID ---
         Write-Host "Creating ProgID: $ProgID..."
         if (-not (Test-Path "HKCR:\$ProgID")) { New-Item -Path "HKCR:\$ProgID" -Force | Out-Null }
         New-ItemProperty -Path "HKCR:\$ProgID" -Name "(default)" -Value "Notepad-- Document" -PropertyType String -Force | Out-Null
@@ -75,32 +76,47 @@ function Install-Integration {
         if (-not (Test-Path "HKCR:\$ProgID\DefaultIcon")) { New-Item -Path "HKCR:\$ProgID\DefaultIcon" -Force | Out-Null }
         New-ItemProperty -Path "HKCR:\$ProgID\DefaultIcon" -Name "(default)" -Value $iconPath -PropertyType String -Force | Out-Null
         
-        # Set Open Command
+        # Set Open Command for ProgID
         if (-not (Test-Path "HKCR:\$ProgID\shell\open\command")) { New-Item -Path "HKCR:\$ProgID\shell\open\command" -Force | Out-Null }
         New-ItemProperty -Path "HKCR:\$ProgID\shell\open\command" -Name "(default)" -Value $command -PropertyType String -Force | Out-Null
 
-        # --- B. Add to Context Menu (Using reg.exe to avoid wildcard hang) ---
-        Write-Host "Adding Context Menu item..."
+        # --- B. Register in HKCR\Applications (CRITICAL FOR WINDOWS 11 OPEN WITH) ---
+        Write-Host "Registering App Capabilities..."
+        $appKey = "HKCR:\Applications\$AppExeName"
+        if (-not (Test-Path $appKey)) { New-Item -Path $appKey -Force | Out-Null }
         
-        # 1. Create the key "Open with Notepad--" under *
+        # Define commands for the App Key
+        if (-not (Test-Path "$appKey\shell\open\command")) { New-Item -Path "$appKey\shell\open\command" -Force | Out-Null }
+        New-ItemProperty -Path "$appKey\shell\open\command" -Name "(default)" -Value $command -PropertyType String -Force | Out-Null
+        # Add Friendly Name
+        New-ItemProperty -Path "$appKey\shell\open" -Name "FriendlyAppName" -Value $AppName -PropertyType String -Force | Out-Null
+
+        # --- C. Add to "Classic" Context Menu (Background Right Click) ---
+        Write-Host "Adding 'Classic' Context Menu item..."
         $regKeyBase = "HKCR\*\shell\$ContextMenuName"
         Start-Process cmd.exe -ArgumentList "/c reg add `"$regKeyBase`" /ve /d `"$ContextMenuName`" /f" -Wait -WindowStyle Hidden
         Start-Process cmd.exe -ArgumentList "/c reg add `"$regKeyBase`" /v Icon /d `"$iconPath`" /f" -Wait -WindowStyle Hidden
-
-        # 2. Create the command key
         Start-Process cmd.exe -ArgumentList "/c reg add `"$regKeyBase\command`" /ve /d `"$escapedCommand`" /f" -Wait -WindowStyle Hidden
 
-        # --- C. Associate Extensions ---
-        Write-Host "Associating extensions..."
+        # --- D. Associate Extensions & OpenWithProgids ---
+        Write-Host "Associating extensions and populating 'Open With'..."
         foreach ($ext in $TargetExtensions) {
+            # 1. Create Extension Key if missing
             if (-not (Test-Path "HKCR:\$ext")) { New-Item "HKCR:\$ext" -Force | Out-Null }
+            
+            # 2. Set Default Association (Optional: User can change this in Settings, but this hints it)
             New-ItemProperty -Path "HKCR:\$ext" -Name "(default)" -Value $ProgID -PropertyType String -Force | Out-Null
-            Write-Host "  Assigning $ext" -ForegroundColor Gray
+            
+            # 3. Add to OpenWithProgids (This puts it in the modern "Open With" list)
+            if (-not (Test-Path "HKCR:\$ext\OpenWithProgids")) { New-Item "HKCR:\$ext\OpenWithProgids" -Force | Out-Null }
+            New-ItemProperty -Path "HKCR:\$ext\OpenWithProgids" -Name $ProgID -Value "" -PropertyType String -Force | Out-Null
+
+            Write-Host "  Processed $ext" -ForegroundColor Gray
         }
 
         Write-Host "`nSUCCESS!" -ForegroundColor Green
-        Write-Host "Notepad-- has been added to the context menu."
-        Write-Host "File associations set." -ForegroundColor Yellow
+        Write-Host "1. Right-click a file -> 'Show more options' -> '$ContextMenuName'"
+        Write-Host "2. Right-click a file -> 'Open With' -> Notepad-- should now appear there."
     }
     catch {
         Write-Error "An error occurred: $_"
@@ -111,10 +127,9 @@ function Uninstall-Integration {
     Write-Host "`n--- REMOVING INTEGRATION ---" -ForegroundColor Magenta
     
     try {
-        # --- A. Remove Context Menu (Using reg.exe) ---
+        # --- A. Remove Classic Context Menu ---
         Write-Host "Removing Context Menu item..."
         $regKeyBase = "HKCR\*\shell\$ContextMenuName"
-        # We use reg delete because removing a key named '*' in PS is also tricky
         Start-Process cmd.exe -ArgumentList "/c reg delete `"$regKeyBase`" /f" -Wait -WindowStyle Hidden
 
         # --- B. Remove ProgID ---
@@ -123,14 +138,26 @@ function Uninstall-Integration {
             Remove-Item "HKCR:\$ProgID" -Recurse -Force
         }
 
-        # --- C. Unlink extensions ---
+        # --- C. Remove Applications Registration ---
+        if (Test-Path "HKCR:\Applications\$AppExeName") {
+            Write-Host "Removing Application registration..."
+            Remove-Item "HKCR:\Applications\$AppExeName" -Recurse -Force
+        }
+
+        # --- D. Unlink extensions & Clean OpenWith ---
         Write-Host "Unlinking file extensions..."
         foreach ($ext in $TargetExtensions) {
+            # Clear default if it matches us
             $current = (Get-ItemProperty -Path "HKCR:\$ext" -Name "(default)" -ErrorAction SilentlyContinue)."(default)"
             if ($current -eq $ProgID) {
                 Remove-ItemProperty -Path "HKCR:\$ext" -Name "(default)" -ErrorAction SilentlyContinue
-                Write-Host "  Cleared $ext" -ForegroundColor Gray
             }
+
+            # Clear OpenWithProgids entry
+            if (Test-Path "HKCR:\$ext\OpenWithProgids") {
+                 Remove-ItemProperty -Path "HKCR:\$ext\OpenWithProgids" -Name $ProgID -ErrorAction SilentlyContinue
+            }
+            Write-Host "  Cleared $ext" -ForegroundColor Gray
         }
 
         Write-Host "`nUNINSTALL COMPLETE." -ForegroundColor Green
