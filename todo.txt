@@ -1,3 +1,5 @@
-Planned changes/fixes:
-1. Better line number handling when using word wrap.
+Planned changes/fixes:
+1. Better line number handling when using word wrap.
 2. Slight weirdness with replace for multiple single replacements in a row.
+3. When opening find window, force set focus to that window's text box.
+4. Ignore case with find.
