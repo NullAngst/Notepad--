@@ -1,5 +1,5 @@
 Planned changes/fixes:
-1. Better line number handling when using word wrap.
+1. Better line number handling when using word wrap.
 2. Slight weirdness with replace for multiple single replacements in a row.
 3. When opening find window, force set focus to that window's text box.
-4. Ignore case with find.
+4. Ignore case with find.5. New lines being added (where there shouldn't be) with certain file formatting/encoding. Need to investigate further.
